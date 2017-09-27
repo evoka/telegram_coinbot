@@ -22,6 +22,9 @@ import requests
 import datetime
 import json
 import os
+from os.path import join, dirname
+from dotenv import load_dotenv
+
 # Enable logging
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
                     level=logging.INFO)
@@ -31,9 +34,37 @@ last_price_korbit = {'btc_krw': 0, 'eth_krw': 0, 'xrp_krw': 0}
 last_price_coinone = {'btc': 0, 'eth': 0, 'xrp': 0}
 last_price_bitfinex = {'btcusd': 0, 'ethusd': 0, 'xrpusd': 0}
 
-coinname_korbit = {'btc_krw':u'코빗 비트코인', 'eth_krw':u'코빗 이더리움'}
-coinname_coinone = {'btc':u'코인원 비트코인', 'eth':u'코인원 이더리움'}
-coinname_bitfinex = {'btcusd':u'Bitfinex 비트코인', 'ethusd':u'Bitfinex 이더리움'}
+
+def save_lastprice():
+    lastprice = [
+        last_price_korbit,
+        last_price_coinone,
+        last_price_bitfinex,
+        chat_ids
+    ]
+    with open('last_price.json', 'w') as data_file:
+        json.dump(lastprice, data_file)
+
+
+def load_lastprice(updater):
+    global last_price_korbit, last_price_coinone, last_price_bitfinex, chat_ids
+
+    try:
+        with open('last_price.json') as data_file:
+            lastprice = json.load(data_file)
+        last_price_korbit = lastprice[0]
+        last_price_coinone = lastprice[1]
+        last_price_bitfinex = lastprice[2]
+        chat_ids = lastprice[3]
+    except:
+        pass
+
+    updater.job_queue.run_repeating(callback_alarm, 30, first=True)
+
+
+coinname_korbit = {'btc_krw':'코빗 비트코인', 'eth_krw':'코빗 이더리움', 'xrp_krw':'코빗 리플'}
+coinname_coinone = {'btc':'코인원 비트코인', 'eth':'코인원 이더리움', 'xrp':'코인원 리플'}
+coinname_bitfinex = {'btcusd':'Bitfinex 비트코인', 'ethusd':'Bitfinex 이더리움', 'xrpusd':'Bitfinex 리플'}
 chat_ids = []
 
 # Define a few command handlers. These usually take the two arguments bot and
@@ -53,10 +84,11 @@ def echo(bot, update):
 def error(bot, update, error):
     logger.warn('Update "%s" caused error "%s"' % (update, error))
 
+
 def get_korbit_current():
-    coins = ['btc_krw', 'eth_krw']
+    coins = ['btc_krw', 'eth_krw', 'xrp_krw']
     current_price = {}
-    msg = u""
+    msg = ""
     for coin in coins:
         ret = requests.get('https://api.korbit.co.kr/v1/ticker?currency_pair='+coin)
         r = json.loads(ret.text)
@@ -65,9 +97,9 @@ def get_korbit_current():
     return current_price 
 
 def get_coinone_current():
-    coins = ['btc', 'eth']
+    coins = ['btc', 'eth', 'xrp']
     current_price = {}
-    msg = u""
+    msg = ""
     for coin in coins:
         ret = requests.get('https://api.coinone.co.kr/ticker/?currency='+coin)
         r = json.loads(ret.text)
@@ -76,9 +108,9 @@ def get_coinone_current():
     return current_price 
 
 def get_bitfinex_current():
-    coins = ['btcusd', 'ethusd']
+    coins = ['btcusd', 'ethusd', 'xrpusd']
     current_price = {}
-    msg = u""
+    msg = ""
     for coin in coins:
         ret = requests.get('https://api.bitfinex.com/v1/pubticker/'+coin)
         r = json.loads(ret.text)
@@ -88,21 +120,22 @@ def get_bitfinex_current():
 
 def make_msg(current_price_bitfinex, current_price_korbit, current_price_coinone):
     global last_price_korbit, last_price_coinone, last_price_bitfinex
-    msg = u''
+    msg = ''
     for coin in sorted(current_price_bitfinex):
         value = current_price_bitfinex[coin]
-        msg = msg + u"\n{} ${:>9,.2f}({:+.2f})".format(coinname_bitfinex[coin], value, value-last_price_bitfinex[coin])
-    msg = msg + u'\n'
+        msg = msg + "\n{} ${:>9,.2f}({:+.2f})".format(coinname_bitfinex[coin], value, value-last_price_bitfinex[coin])
+    msg = msg + '\n'
     for coin in sorted(current_price_coinone):
         value = current_price_coinone[coin]
-        msg = msg + u"\n{} {:>9,d}원({:+d})".format(coinname_coinone[coin], value, value-last_price_coinone[coin])
-    msg = msg + u'\n'
+        msg = msg + "\n{} {:>9,d}원({:+d})".format(coinname_coinone[coin], value, value-last_price_coinone[coin])
+    msg = msg + '\n'
     for coin in sorted(current_price_korbit):
         value = current_price_korbit[coin]
-        msg = msg + u"\n{} {:>9,d}원({:+d})".format(coinname_korbit[coin], value, value-last_price_korbit[coin])
+        msg = msg + "\n{} {:>9,d}원({:+d})".format(coinname_korbit[coin], value, value-last_price_korbit[coin])
     if current_price_bitfinex: last_price_bitfinex = current_price_bitfinex
     if current_price_coinone: last_price_coinone = current_price_coinone
     if current_price_korbit: last_price_korbit = current_price_korbit
+    save_lastprice()
     return msg
 
 def current_price(bot, update):
@@ -145,30 +178,30 @@ def callback_alarm(bot, job):
             bot.send_message(chat_id=chat_id, text=msg)
 
 def callback_timer(bot, update, job_queue):
+    global chat_ids
     bot.send_message(chat_id=update.message.chat_id,
-                     text=u'시세알람 타이머 동작')
+                     text='시세알람 타이머 동작')
     chat_ids.append(update.message.chat_id)
-
-    job_alarm = Job(callback_alarm,
-                    30.0,
-                    context=update.message.chat_id)
-    job_queue.run_repeating(callback_alarm, 30, first=True,context=update.message.chat_id)
-
+    save_lastprice()
 
 def main():
     # Create the EventHandler and pass it your bot's token.
+    dotenv_path = join(dirname(__file__), '.env')
+    load_dotenv(dotenv_path)
+
     telegram_bot_token = os.environ.get('bot_token')
     updater = Updater(telegram_bot_token)
+    load_lastprice(updater)
 
     # Get the dispatcher to register handlers
     dp = updater.dispatcher
 
     # on different commands - answer in Telegram
-    dp.add_handler(CommandHandler(u"시작", start))
-    dp.add_handler(CommandHandler(u"도움", help))
+    dp.add_handler(CommandHandler("시작", start))
+    dp.add_handler(CommandHandler("도움", help))
 
     # on noncommand i.e message - echo the message on Telegram
-    dp.add_handler(CommandHandler(u"시세", current_price))
+    dp.add_handler(CommandHandler("시세", current_price))
     dp.add_handler(CommandHandler('timer', callback_timer, pass_job_queue=True))
     # log all errors
     dp.add_error_handler(error)
