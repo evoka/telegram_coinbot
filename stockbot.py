@@ -62,10 +62,14 @@ def load_lastprice(updater):
     updater.job_queue.run_repeating(callback_alarm, 30, first=True)
 
 
-coinname_korbit = {'btc_krw':'코빗 비트코인', 'eth_krw':'코빗 이더리움', 'xrp_krw':'코빗 리플'}
-coinname_coinone = {'btc':'코인원 비트코인', 'eth':'코인원 이더리움', 'xrp':'코인원 리플'}
-coinname_bitfinex = {'btcusd':'Bitfinex 비트코인', 'ethusd':'Bitfinex 이더리움', 'xrpusd':'Bitfinex 리플'}
+coinname_korbit = {'btc_krw':'코빗 비트코인', 'eth_krw':'코빗 이더리움', 'xrp_krw':'코빗 리플   '}
+coinname_coinone = {'btc':'코인원 비트코인', 'eth':'코인원 이더리움', 'xrp':'코인원 리플   '}
+coinname_bitfinex = {'btcusd':'Bitfinex 비트코인', 'ethusd':'Bitfinex 이더리움', 'xrpusd':'Bitfinex 리플   '}
 chat_ids = []
+
+coin_sensitivity = {'btc_krw': 0.02, 'btc': 0.02, 'btcusd': 0.02,
+                    'eth_krw': 0.02, 'eth': 0.02, 'ethusd': 0.02,
+                    'xrp_krw': 0.04, 'xrp': 0.04, 'xrpusd': 0.04}
 
 # Define a few command handlers. These usually take the two arguments bot and
 # update. Error handlers also receive the raised TelegramError object in error.
@@ -118,20 +122,23 @@ def get_bitfinex_current():
         current_price[coin] = value
     return current_price
 
-def make_msg(current_price_bitfinex, current_price_korbit, current_price_coinone):
+def make_msg(current_price_bitfinex, current_price_korbit, current_price_coinone, alarm_coin=""):
     global last_price_korbit, last_price_coinone, last_price_bitfinex
     msg = ''
     for coin in sorted(current_price_bitfinex):
         value = current_price_bitfinex[coin]
-        msg = msg + "\n{} ${:>9,.2f}({:+.2f})".format(coinname_bitfinex[coin], value, value-last_price_bitfinex[coin])
+        star = "*" if coin == alarm_coin else ''
+        msg = msg + "\n`{} ${:>10,.4f}({:+.4f}){}`".format(coinname_bitfinex[coin], value, value-last_price_bitfinex[coin], star)
     msg = msg + '\n'
     for coin in sorted(current_price_coinone):
         value = current_price_coinone[coin]
-        msg = msg + "\n{} {:>9,d}원({:+d})".format(coinname_coinone[coin], value, value-last_price_coinone[coin])
+        star = "*" if coin == alarm_coin else ''
+        msg = msg + "\n`{} {:>10,d}원({:+d}){}`".format(coinname_coinone[coin], value, value-last_price_coinone[coin], star)
     msg = msg + '\n'
     for coin in sorted(current_price_korbit):
         value = current_price_korbit[coin]
-        msg = msg + "\n{} {:>9,d}원({:+d})".format(coinname_korbit[coin], value, value-last_price_korbit[coin])
+        star = "*" if coin == alarm_coin else ''
+        msg = msg + "\n`{} {:>10,d}원({:+d}){}`".format(coinname_korbit[coin], value, value-last_price_korbit[coin], star)
     if current_price_bitfinex: last_price_bitfinex = current_price_bitfinex
     if current_price_coinone: last_price_coinone = current_price_coinone
     if current_price_korbit: last_price_korbit = current_price_korbit
@@ -142,7 +149,7 @@ def current_price(bot, update):
     current_price_coinone = get_coinone_current()
     current_price_korbit = get_korbit_current()
     current_price_bitfinex = get_bitfinex_current()
-    update.message.reply_text(make_msg(current_price_bitfinex, current_price_korbit, current_price_coinone))
+    update.message.reply_text(make_msg(current_price_bitfinex, current_price_korbit, current_price_coinone), parse_mode='Markdown')
 
 def callback_alarm(bot, job):
     # check last and current
@@ -162,20 +169,23 @@ def callback_alarm(bot, job):
     check = False
     for coin in current_price_bitfinex:
         value = current_price_bitfinex[coin]
-        if value > last_price_bitfinex[coin] * 1.02 or value < last_price_bitfinex[coin] * 0.98:
+        if value > last_price_bitfinex[coin] * (1.0 + coin_sensitivity[coin]) or value < last_price_bitfinex[coin] * (1.0 - coin_sensitivity[coin]):
             check = True
+            alarm_coin = coin
     for coin in current_price_coinone:
         value = current_price_coinone[coin]
-        if value > last_price_coinone[coin] * 1.02 or value < last_price_coinone[coin] * 0.98:
+        if value > last_price_coinone[coin] * (1.0 + coin_sensitivity[coin]) or value < last_price_coinone[coin] * (1.0 - coin_sensitivity[coin]):
             check = True
+            alarm_coin = coin
     for coin in current_price_korbit:
         value = current_price_korbit[coin]
-        if value > last_price_korbit[coin] * 1.02 or value < last_price_korbit[coin] * 0.98:
+        if value > last_price_korbit[coin] * (1.0 + coin_sensitivity[coin]) or value < last_price_korbit[coin] * (1.0 - coin_sensitivity[coin]):
             check = True
+            alarm_coin = coin
     if check:
-        msg = make_msg(current_price_bitfinex, current_price_korbit, current_price_coinone)
+        msg = make_msg(current_price_bitfinex, current_price_korbit, current_price_coinone, alarm_coin)
         for chat_id in chat_ids:
-            bot.send_message(chat_id=chat_id, text=msg)
+            bot.send_message(chat_id=chat_id, text=msg, parse_mode='Markdown')
 
 def callback_timer(bot, update, job_queue):
     global chat_ids
