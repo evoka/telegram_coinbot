@@ -16,10 +16,10 @@ Press Ctrl-C on the command line or send a signal to the process to stop the
 bot.
 """
 
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, Job
+
+from telegram.ext import Updater, CommandHandler
 import logging
 import requests
-import datetime
 import json
 import os
 from os.path import join, dirname
@@ -30,46 +30,53 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
                     level=logging.INFO)
 
 logger = logging.getLogger(__name__)
-last_price_korbit = {'btc_krw': 0, 'eth_krw': 0, 'xrp_krw': 0}
-last_price_coinone = {'btc': 0, 'eth': 0, 'xrp': 0}
-last_price_bitfinex = {'btcusd': 0, 'ethusd': 0, 'xrpusd': 0}
+
+coins = ['btc', 'eth', 'xrp', 'etc']
+martkets = ['bitfinex', 'coinone', 'korbit']
+
+last_price = {
+}
+
+current_price = {
+}
+
+chatroom_coin_info = {
+}
+
+market_coin_dict = {
+    'korbit': {'btc': 'btc_krw', 'eth': 'eth_krw', 'xrp': 'xrp_krw', 'etc': 'etc_krw'},
+    'coinone': {'btc': 'btc', 'eth': 'eth', 'xrp': 'xrp', 'etc': 'etc'},
+    'bitfinex': {'btc': 'btcusd', 'eth': 'ethusd', 'xrp': 'xrpusd', 'etc': 'etcusd'}
+}
 
 
 def save_lastprice():
-    lastprice = [
-        last_price_korbit,
-        last_price_coinone,
-        last_price_bitfinex,
-        chat_ids
-    ]
-    with open('last_price.json', 'w') as data_file:
-        json.dump(lastprice, data_file)
+    with open('data.json', 'w') as data_file:
+        json.dump(last_price, data_file)
+    with open('chatroom_coin_info.json', 'w') as data_file:
+        json.dump(chatroom_coin_info, data_file)
 
 
 def load_lastprice(updater):
-    global last_price_korbit, last_price_coinone, last_price_bitfinex, chat_ids
+    global last_price
+    global chatroom_coin_info
 
     try:
-        with open('last_price.json') as data_file:
-            lastprice = json.load(data_file)
-        last_price_korbit = lastprice[0]
-        last_price_coinone = lastprice[1]
-        last_price_bitfinex = lastprice[2]
-        chat_ids = lastprice[3]
+        with open('data.json') as data_file:
+            last_price = json.load(data_file)
+    except:
+        pass
+    try:
+        with open('chatroom_coin_info.json') as data_file:
+            chatroom_coin_info = json.load(data_file)
     except:
         pass
 
     updater.job_queue.run_repeating(callback_alarm, 30, first=True)
 
 
-coinname_korbit = {'btc_krw':'코빗 비트코인', 'eth_krw':'코빗 이더리움', 'xrp_krw':'코빗 리플   '}
-coinname_coinone = {'btc':'코인원 비트코인', 'eth':'코인원 이더리움', 'xrp':'코인원 리플   '}
-coinname_bitfinex = {'btcusd':'Bitfinex 비트코인', 'ethusd':'Bitfinex 이더리움', 'xrpusd':'Bitfinex 리플   '}
-chat_ids = []
+coinname_dict = {'btc': 'BTC 비트코인', 'eth': 'ETH 이더리움', 'xrp': 'XRP 리플', 'etc': 'ETC 이더리움클래식'}
 
-coin_sensitivity = {'btc_krw': 0.02, 'btc': 0.02, 'btcusd': 0.02,
-                    'eth_krw': 0.02, 'eth': 0.02, 'ethusd': 0.02,
-                    'xrp_krw': 0.04, 'xrp': 0.04, 'xrpusd': 0.04}
 
 # Define a few command handlers. These usually take the two arguments bot and
 # update. Error handlers also receive the raised TelegramError object in error.
@@ -78,7 +85,7 @@ def start(bot, update):
 
 
 def help(bot, update):
-    update.message.reply_text('Help!')
+    update.message.reply_text('/시세 : 현재 종합 시세 보기\n/알람 btc 5% : 비트코인이 5% 변할 때 마다 알려주기\n\n지원 코인 '+coins.join(','))
 
 
 def echo(bot, update):
@@ -89,110 +96,123 @@ def error(bot, update, error):
     logger.warn('Update "%s" caused error "%s"' % (update, error))
 
 
-def get_korbit_current():
-    coins = ['btc_krw', 'eth_krw', 'xrp_krw']
-    current_price = {}
-    msg = ""
-    for coin in coins:
-        ret = requests.get('https://api.korbit.co.kr/v1/ticker?currency_pair='+coin)
+def update_korbit_current():
+    global current_price
+    current_market_price = {}
+    for (coin, marketcoinname) in market_coin_dict['korbit'].items():
+        ret = requests.get('https://api.korbit.co.kr/v1/ticker?currency_pair=' + marketcoinname)
         r = json.loads(ret.text)
         value = int(r['last'])
-        current_price[coin] = value
-    return current_price 
+        current_market_price[coin] = value
+    current_price['korbit'] = current_market_price
 
-def get_coinone_current():
-    coins = ['btc', 'eth', 'xrp']
-    current_price = {}
-    msg = ""
-    for coin in coins:
-        ret = requests.get('https://api.coinone.co.kr/ticker/?currency='+coin)
+
+def update_coinone_current():
+    global current_price
+    current_market_price = dict()
+    for (coin, marketcoinname) in market_coin_dict['coinone'].items():
+        ret = requests.get('https://api.coinone.co.kr/ticker/?currency='+marketcoinname)
         r = json.loads(ret.text)
         value = int(r['last'])
-        current_price[coin] = value
-    return current_price 
+        current_market_price[coin] = value
+    current_price['coinone'] = current_market_price
 
-def get_bitfinex_current():
-    coins = ['btcusd', 'ethusd', 'xrpusd']
-    current_price = {}
-    msg = ""
-    for coin in coins:
-        ret = requests.get('https://api.bitfinex.com/v1/pubticker/'+coin)
-        r = json.loads(ret.text)
-        value = float(r['last_price'])
-        current_price[coin] = value
-    return current_price
 
-def make_msg(current_price_bitfinex, current_price_korbit, current_price_coinone, alarm_coin=""):
-    global last_price_korbit, last_price_coinone, last_price_bitfinex
+def update_bitfinex_current():
+    global current_price
+    current_market_price = {}
+    for (coin, marketcoinname) in market_coin_dict['bitfinex'].items():
+        ret = requests.get('https://api.bitfinex.com/v1/pubticker/'+marketcoinname)
+        if ret.status_code == 200:
+            r = json.loads(ret.text)
+            value = float(r['last_price'])
+            current_market_price[coin] = value
+        else:
+            return
+    current_price['bitfinex'] = current_market_price
+
+
+def make_msg(room, only_coin=None, updown=""):
     msg = ''
-    for coin in sorted(current_price_bitfinex):
-        value = current_price_bitfinex[coin]
-        star = "*" if coin == alarm_coin else ''
-        msg = msg + "\n`{} ${:>10,.4f}({:+.4f}){}`".format(coinname_bitfinex[coin], value, value-last_price_bitfinex[coin], star)
-    msg = msg + '\n'
-    for coin in sorted(current_price_coinone):
-        value = current_price_coinone[coin]
-        star = "*" if coin == alarm_coin else ''
-        msg = msg + "\n`{} {:>10,d}원({:+d}){}`".format(coinname_coinone[coin], value, value-last_price_coinone[coin], star)
-    msg = msg + '\n'
-    for coin in sorted(current_price_korbit):
-        value = current_price_korbit[coin]
-        star = "*" if coin == alarm_coin else ''
-        msg = msg + "\n`{} {:>10,d}원({:+d}){}`".format(coinname_korbit[coin], value, value-last_price_korbit[coin], star)
-    if current_price_bitfinex: last_price_bitfinex = current_price_bitfinex
-    if current_price_coinone: last_price_coinone = current_price_coinone
-    if current_price_korbit: last_price_korbit = current_price_korbit
+    global last_price
+    for coin in coins:
+        if only_coin and only_coin != coin: continue
+        msg = msg + "\n\n{}{}".format(coinname_dict[coin], updown)
+        for market in martkets:
+            current = current_price[market][coin]
+            try:
+                lastprice = last_price[room][market][coin]
+                diffprice = current - lastprice
+            except:
+                diffprice = 0
+            if market == 'bitfinex':
+                msg = msg + "\n`{:10} ${:>11,.4f}({:+.4f})`".format(market, current, diffprice)
+            else:
+                msg = msg + "\n`{:10} {:>11,d}원({:+d})`".format(market, current, diffprice)
+            try:
+                last_price[room][market][coin] = current
+            except KeyError:
+                try:
+                    last_price[room][market] = {coin: current}
+                except KeyError:
+                    last_price[room] = {market: {coin: current}}
+
     save_lastprice()
     return msg
 
-def current_price(bot, update):
-    current_price_coinone = get_coinone_current()
-    current_price_korbit = get_korbit_current()
-    current_price_bitfinex = get_bitfinex_current()
-    update.message.reply_text(make_msg(current_price_bitfinex, current_price_korbit, current_price_coinone), parse_mode='Markdown')
+
+def update_market_price():
+    update_coinone_current()
+    update_korbit_current()
+    update_bitfinex_current()
+
+
+def check_current_price(bot, update):
+    update_market_price()
+    update.message.reply_text(make_msg(update.message.chat_id), parse_mode='Markdown')
+
 
 def callback_alarm(bot, job):
     # check last and current
-    try:
-        current_price_coinone = get_coinone_current()
-    except:
-        current_price_coinone = {} 
-    try:
-        current_price_korbit = get_korbit_current()
-    except:
-        current_price_korbit = {} 
-    try:
-        current_price_bitfinex = get_bitfinex_current()
-    except:
-        current_price_bitfinex = {} 
-    # send or not
-    check = False
-    for coin in current_price_bitfinex:
-        value = current_price_bitfinex[coin]
-        if value > last_price_bitfinex[coin] * (1.0 + coin_sensitivity[coin]) or value < last_price_bitfinex[coin] * (1.0 - coin_sensitivity[coin]):
-            check = True
-            alarm_coin = coin
-    for coin in current_price_coinone:
-        value = current_price_coinone[coin]
-        if value > last_price_coinone[coin] * (1.0 + coin_sensitivity[coin]) or value < last_price_coinone[coin] * (1.0 - coin_sensitivity[coin]):
-            check = True
-            alarm_coin = coin
-    for coin in current_price_korbit:
-        value = current_price_korbit[coin]
-        if value > last_price_korbit[coin] * (1.0 + coin_sensitivity[coin]) or value < last_price_korbit[coin] * (1.0 - coin_sensitivity[coin]):
-            check = True
-            alarm_coin = coin
-    if check:
-        msg = make_msg(current_price_bitfinex, current_price_korbit, current_price_coinone, alarm_coin)
-        for chat_id in chat_ids:
-            bot.send_message(chat_id=chat_id, text=msg, parse_mode='Markdown')
+    update_market_price()
+    for (room, coininfo) in chatroom_coin_info.items():
+        for (coin, sensitivity) in coininfo.items():
+            check = False
+            updown = ""
+            for (market, market_coinprice) in current_price.items():
+                value = market_coinprice[coin]
+                try:
+                    last_value = last_price[room][market][coin]
+
+                    if value > last_value * (1.0 + sensitivity):
+                        check = True
+                        updown = "❤️"
+                    if value < last_value * (1.0 - sensitivity):
+                        check = True
+                        updown = "💙"
+                except:
+                    check = True
+            if check:
+                bot.send_message(chat_id=room,
+                                text=make_msg(room, only_coin=coin, updown=updown), parse_mode='Markdown')
+
 
 def callback_timer(bot, update, job_queue):
-    global chat_ids
+    msg_list = update.message.text.split(' ')
+    if len(msg_list) != 3:
+        bot.send_message(chat_id=update.message.chat_id,
+                         text='알람설정 `/알람 [코인종류] [민감도]%`', parse_mode='Markdown')
+        return
+    coin = msg_list[1].lower()
+    global chatroom_coin_info
     bot.send_message(chat_id=update.message.chat_id,
                      text='시세알람 타이머 동작')
-    chat_ids.append(update.message.chat_id)
+    if update.message.chat_id in chatroom_coin_info:
+        chatroom_coin_info[update.message.chat_id][coin]=float(msg_list[2].strip('%'))/100
+    else:
+        chatroom_coin_info[update.message.chat_id]={coin:float(msg_list[2].strip('%'))/100}
     save_lastprice()
+
 
 def main():
     # Create the EventHandler and pass it your bot's token.
@@ -207,12 +227,12 @@ def main():
     dp = updater.dispatcher
 
     # on different commands - answer in Telegram
-    dp.add_handler(CommandHandler("시작", start))
+    dp.add_handler(CommandHandler("안녕", start))
     dp.add_handler(CommandHandler("도움", help))
 
     # on noncommand i.e message - echo the message on Telegram
-    dp.add_handler(CommandHandler("시세", current_price))
-    dp.add_handler(CommandHandler('timer', callback_timer, pass_job_queue=True))
+    dp.add_handler(CommandHandler("시세", check_current_price))
+    dp.add_handler(CommandHandler('알람', callback_timer, pass_job_queue=True))
     # log all errors
     dp.add_error_handler(error)
 
