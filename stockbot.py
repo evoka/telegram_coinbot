@@ -190,6 +190,9 @@ def callback_alarm(bot, job):
                     if value < last_value * (1.0 - sensitivity):
                         check = True
                         updown = "💙"
+
+                    if value > last_value * (1.0 + sensitivity) or value < last_value * (1.0 - sensitivity):
+                        check = True
                 except:
                     check = True
             if check:
